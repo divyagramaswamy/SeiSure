@@ -1,0 +1,507 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, #12303d, transparent 34%),
+    #061016;
+  color: #edf8fa;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button {
+  font-family: inherit;
+}
+
+.app {
+  max-width: 1500px;
+  min-height: 100vh;
+  margin: auto;
+  padding: 28px 5vw 60px;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: #78919c;
+  font-size: 13px;
+}
+
+.logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-size: 22px;
+  color: #04130f;
+  background: linear-gradient(135deg, #31d6a6, #49a9ff);
+}
+
+.live {
+  padding: 9px 14px;
+  border-radius: 100px;
+  border: 1px solid #23404b;
+  background: #0b1a21;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.live span,
+.visionBadge span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #31d6a6;
+  box-shadow: 0 0 12px #31d6a6;
+}
+
+.demoControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #78919c;
+  font-size: 12px;
+}
+
+.demoControls button {
+  border: 1px solid #1b3741;
+  background: #0b1920;
+  color: #8fa6b0;
+  padding: 8px 13px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.demoControls button.selected {
+  color: white;
+  border-color: #38caa2;
+  background: #153b38;
+}
+
+.demoControls .dangerButton {
+  border-color: #ff5f72;
+  background: #4b1d26;
+}
+
+.alertBanner {
+  border: 1px solid #8e3542;
+  background: linear-gradient(90deg, #3c171e, #211218);
+  border-radius: 15px;
+  padding: 17px 20px;
+  margin-bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.alertBanner strong {
+  font-size: 17px;
+}
+
+.alertBanner p {
+  margin: 4px 0 0;
+  color: #dca7ae;
+  font-size: 13px;
+}
+
+.alertActions {
+  display: flex;
+  gap: 8px;
+}
+
+.alertActions button {
+  border: 0;
+  background: #ff6577;
+  color: white;
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.alertActions .secondary {
+  background: #351b21;
+  border: 1px solid #77414a;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 18px;
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bottomGrid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.card {
+  border: 1px solid #17353f;
+  background: rgba(11, 25, 32, 0.9);
+  border-radius: 17px;
+  padding: 21px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
+}
+
+.card h2 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.card > p,
+.cardHeader p,
+.riskHeader p {
+  color: #78909b;
+  font-size: 12px;
+  margin: 5px 0 0;
+}
+
+.cardHeader,
+.riskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 17px;
+}
+
+.toggle {
+  border: 1px solid #17343e;
+  border-radius: 9px;
+  padding: 3px;
+  background: #061116;
+}
+
+.toggle button {
+  border: 0;
+  background: transparent;
+  color: #78909b;
+  padding: 6px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.toggle button.active {
+  background: #17353e;
+  color: white;
+}
+
+.videoArea {
+  height: 455px;
+  background:
+    linear-gradient(rgba(49, 214, 166, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(49, 214, 166, 0.025) 1px, transparent 1px),
+    #03090d;
+  background-size: 30px 30px;
+  border-radius: 13px;
+  overflow: hidden;
+  position: relative;
+}
+
+video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+.hiddenVideo {
+  display: none;
+}
+
+.visionBadge {
+  position: absolute;
+  bottom: 13px;
+  left: 13px;
+  background: rgba(2, 10, 13, 0.88);
+  border: 1px solid #1c3a43;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 11px;
+  color: #77dec2;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.privacyView {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+}
+
+.privacyView p {
+  margin: 15px 0 3px;
+  font-weight: 600;
+}
+
+.privacyView span {
+  color: #5c7b86;
+  font-size: 11px;
+}
+
+.person {
+  width: 150px;
+  height: 260px;
+  position: relative;
+}
+
+.head {
+  position: absolute;
+  left: 56px;
+  top: 0;
+  width: 38px;
+  height: 38px;
+  border: 4px solid #31d6a6;
+  border-radius: 50%;
+}
+
+.torso,
+.arm,
+.leg {
+  position: absolute;
+  width: 4px;
+  background: #31d6a6;
+  box-shadow: 0 0 10px rgba(49, 214, 166, 0.5);
+  border-radius: 5px;
+}
+
+.torso {
+  height: 100px;
+  top: 42px;
+  left: 73px;
+}
+
+.arm {
+  height: 88px;
+  top: 53px;
+}
+
+.armLeft {
+  left: 48px;
+  transform: rotate(36deg);
+}
+
+.armRight {
+  right: 48px;
+  transform: rotate(-36deg);
+}
+
+.leg {
+  height: 110px;
+  top: 136px;
+}
+
+.legLeft {
+  left: 56px;
+  transform: rotate(19deg);
+}
+
+.legRight {
+  right: 56px;
+  transform: rotate(-19deg);
+}
+
+.statusCard {
+  min-height: 145px;
+}
+
+.eyebrow {
+  color: #66828d;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.statusRow h2 {
+  font-size: 23px;
+  color: #31d6a6;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #31d6a6;
+  box-shadow: 0 0 12px #31d6a6;
+}
+
+.statusCard.emergency {
+  border-color: #71313b;
+}
+
+.statusCard.emergency h2 {
+  color: #ff6577;
+}
+
+.statusCard.emergency .statusDot {
+  background: #ff6577;
+  box-shadow: 0 0 12px #ff6577;
+}
+
+.metric {
+  margin-top: 19px;
+}
+
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 7px;
+}
+
+.metricRow span {
+  color: #87a0aa;
+}
+
+.smallTrack,
+.riskTrack {
+  height: 6px;
+  background: #051015;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.smallTrack div,
+.riskFill {
+  height: 100%;
+  background: linear-gradient(90deg, #31d6a6, #3ca7ff);
+  border-radius: inherit;
+  transition: width 0.45s ease;
+}
+
+.risk {
+  font-size: 34px;
+  font-weight: 800;
+  color: #31d6a6;
+}
+
+.dangerText {
+  color: #ff6577;
+}
+
+.riskTrack {
+  height: 10px;
+  margin: 20px 0;
+}
+
+.dangerFill {
+  background: linear-gradient(90deg, #ff9b63, #ff536b);
+}
+
+.signalBoxes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.signalBox {
+  border: 1px solid #17323b;
+  background: #07141a;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.signalBox span {
+  display: block;
+  color: #718b95;
+  font-size: 10px;
+  margin-bottom: 5px;
+}
+
+.signalBox strong {
+  font-size: 18px;
+}
+
+.timeline {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.timelineDot {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #405761;
+}
+
+.activeDot {
+  background: #31d6a6;
+  box-shadow: 0 0 10px #31d6a6;
+}
+
+.dangerDot {
+  background: #ff6577;
+  box-shadow: 0 0 10px #ff6577;
+}
+
+.timeline span {
+  color: #5b7781;
+  font-size: 10px;
+  display: block;
+}
+
+.timeline strong {
+  font-size: 12px;
+  display: block;
+  margin-top: 3px;
+}
+
+@media (max-width: 900px) {
+  .grid,
+  .bottomGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .signalBoxes {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .alertBanner {
+    align-items: flex-start;
+    gap: 12px;
+    flex-direction: column;
+  }
+}
