@@ -26,6 +26,10 @@ dist-ssr
 # Local patient data (health information, keep out of git)
 data/
 .env
-HeartRateReport/
+
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
 src/pages/backupDashboard.jsx
 
