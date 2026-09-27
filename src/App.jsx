@@ -123,7 +123,7 @@ export default function App() {
       <header className="navbar">
         <div className="brand">
           <div className="logo">
-            N
+            <img src="/seisure-logo.png" alt="SeiSure logo" />
           </div>
 
           <div>
