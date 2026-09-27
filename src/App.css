@@ -248,6 +248,9 @@ video {
 .hiddenVideo {
   visibility: hidden;
 }
+.hiddenCanvas {
+  display: none;
+}
 
 .poseCanvas {
   pointer-events: none;

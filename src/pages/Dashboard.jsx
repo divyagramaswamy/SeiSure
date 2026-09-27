@@ -1,170 +1,458 @@
-import { useEffect, useRef, useState } from "react";
-import usePoseTracking from "../pose/usePoseTracking";
-import useActivityRecorder from "../activity/useActivityRecorder";
-import { addEvent } from "../activity/activityLog";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-const DEFAULT_VISION_THRESHOLD = 65;
+import usePoseTracking from "../pose/usePoseTracking";
+
+import useActivityRecorder from "../activity/useActivityRecorder";
+
+import {
+  addEvent,
+} from "../activity/activityLog";
+
+const DEFAULT_VISION_THRESHOLD = 45;
 const DEFAULT_HR_THRESHOLD = 120;
 const DEFAULT_DURATION_SECONDS = 4;
 
-export default function Dashboard({ patient }) {
+const PRE_EVENT_SECONDS = 60;
+
+const REGION_LABELS = {
+  leftArm: "Left arm",
+  rightArm: "Right arm",
+  leftLeg: "Left leg",
+  rightLeg: "Right leg",
+  torso: "Torso",
+};
+
+export default function Dashboard({
+  patient,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  const [privacy, setPrivacy] = useState(false);
-  const [cameraError, setCameraError] = useState(false);
+  const [privacy, setPrivacy] =
+    useState(false);
+  const [cameras, setCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState("");
+  const [
+    cameraError,
+    setCameraError,
+  ] = useState(false);
 
-  // Detection settings
-  const [visionThreshold, setVisionThreshold] = useState(
+  const [
+    visionThreshold,
+    setVisionThreshold,
+  ] = useState(
     DEFAULT_VISION_THRESHOLD,
   );
-  const [heartRateThreshold, setHeartRateThreshold] = useState(
+
+  const [
+    heartRateThreshold,
+    setHeartRateThreshold,
+  ] = useState(
     DEFAULT_HR_THRESHOLD,
   );
-  const [durationThreshold, setDurationThreshold] = useState(
+
+  const [
+    durationThreshold,
+    setDurationThreshold,
+  ] = useState(
     DEFAULT_DURATION_SECONDS,
   );
 
-  // Sensor source
-  const [demoMode, setDemoMode] = useState(false);
+  const [
+    demoMode,
+    setDemoMode,
+  ] = useState(false);
 
-  // Real HealthKit value received through our backend
-  const [liveHeartRate, setLiveHeartRate] = useState(null);
-  const [heartRateTimestamp, setHeartRateTimestamp] = useState(null);
-  const [sensorConnected, setSensorConnected] = useState(false);
+  const [
+    demoHeartRate,
+    setDemoHeartRate,
+  ] = useState(76);
 
-  // Only used when Cmd+D enables demo mode
-  const [demoHeartRate, setDemoHeartRate] = useState(76);
+  const [
+    liveHeartRate,
+    setLiveHeartRate,
+  ] = useState(null);
 
-  // Detection timing
-  const [holdProgress, setHoldProgress] = useState(0);
-  const [eventDetected, setEventDetected] = useState(false);
+  const [
+    heartRateTimestamp,
+    setHeartRateTimestamp,
+  ] = useState(null);
 
-  const candidateStartRef = useRef(null);
-  const eventLoggedRef = useRef(false);
+  const [
+    sensorConnected,
+    setSensorConnected,
+  ] = useState(false);
 
-  const pose = usePoseTracking(videoRef, canvasRef);
+  const [
+    holdProgress,
+    setHoldProgress,
+  ] = useState(0);
 
-  useActivityRecorder(patient?.id, pose);
+  const [
+    eventDetected,
+    setEventDetected,
+  ] = useState(false);
 
-  const heartRate = demoMode ? demoHeartRate : liveHeartRate;
+  const pose =
+    usePoseTracking(
+      videoRef,
+      canvasRef,
+    );
+
+  useActivityRecorder(
+    patient?.id,
+    pose,
+  );
+
+  const heartRate = demoMode
+    ? demoHeartRate
+    : liveHeartRate;
+
+  const candidateStartRef =
+    useRef(null);
+
+  const eventLoggedRef =
+    useRef(false);
+
+  const rollingRef =
+    useRef([]);
+
+  const latestRef =
+    useRef({});
+
+  latestRef.current = {
+    motion: pose.motion,
+    regions: pose.regions,
+    heartRate,
+    posture: pose.posture,
+  };
 
   const visionAboveThreshold =
-    pose.status === "tracking" &&
-    pose.motion >= visionThreshold;
+    pose.status ===
+      "tracking" &&
+    pose.motion >=
+      visionThreshold;
 
   const heartRateAboveThreshold =
     heartRate !== null &&
-    heartRate >= heartRateThreshold;
+    heartRate >=
+      heartRateThreshold;
 
   const candidate =
     visionAboveThreshold &&
     heartRateAboveThreshold;
 
   /*
-   * -----------------------------------------
-   * CAMERA
-   * -----------------------------------------
-   */
-  useEffect(() => {
-    let stream;
-    let cancelled = false;
+  * Event Risk Index
+  *
+  * Each signal is normalized relative to its own
+  * personalized threshold.
+  *
+  * We use the LOWER of the two normalized signals.
+  *
+  * Therefore:
+  *   riskIndex < 100  = at least one signal is below threshold
+  *   riskIndex >= 100 = BOTH signals are above threshold
+  *
+  * The alert itself still requires this condition to remain
+  * true for durationThreshold seconds.
+  */
 
-    async function startCamera() {
-      try {
-        stream =
-          await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
+  const ALERT_RISK_THRESHOLD = 100;
 
-        if (cancelled) {
-          stream
-            .getTracks()
-            .forEach((track) => track.stop());
-          return;
-        }
+  const visionRatio =
+    visionThreshold > 0
+      ? pose.motion / visionThreshold
+      : 0;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
-        console.error("Camera unavailable:", err);
+  const hrRatio =
+    heartRate !== null && heartRateThreshold > 0
+      ? heartRate / heartRateThreshold
+      : 0;
 
-        if (!cancelled) {
-          setCameraError(true);
-        }
-      }
-    }
+  const riskIndex = Math.round(
+    100 * Math.min(visionRatio, hrRatio)
+  );
 
-    startCamera();
+  const riskScaleMax = 150;
 
-    return () => {
-      cancelled = true;
+  const displayedRisk = clamp(
+    riskIndex,
+    0,
+    riskScaleMax
+  );
 
-      stream
-        ?.getTracks()
-        .forEach((track) => track.stop());
-    };
-  }, []);
+  const riskBarPercent =
+    (displayedRisk / riskScaleMax) * 100;
 
   /*
-   * -----------------------------------------
-   * CMD+D / CTRL+D DEMO MODE
-   * -----------------------------------------
-   */
-  useEffect(() => {
-    function handleShortcut(event) {
-      const target = event.target;
+  * Since the scale goes from 0–150 and the true
+  * alert threshold is 100, the marker should always
+  * sit at 100/150 = 66.7% of the bar.
+  */
+  const alertMarkerPercent =
+    (ALERT_RISK_THRESHOLD / riskScaleMax) * 100;
 
-      const isTyping =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        target?.isContentEditable;
+  const activeRegion =
+    Object.entries(
+      pose.regions ?? {},
+    ).sort(
+      (a, b) =>
+        b[1] - a[1],
+    )[0] ?? [
+      "torso",
+      0,
+    ];
+    /*
+ * Camera.
+ *
+ * Continuity Camera appears to the browser as a normal
+ * videoinput device, so the exact same pipeline works
+ * for either the MacBook camera or the iPhone camera.
+ */
+useEffect(() => {
+  let stream;
+  let cancelled = false;
 
-      if (isTyping) return;
+  async function startCamera() {
+    try {
+      setCameraError(false);
+
+      const constraints = selectedCameraId
+        ? {
+            video: {
+              deviceId: {
+                exact: selectedCameraId,
+              },
+            },
+            audio: false,
+          }
+        : {
+            video: true,
+            audio: false,
+          };
+
+      stream =
+        await navigator.mediaDevices.getUserMedia(
+          constraints,
+        );
+
+      if (cancelled) {
+        stream
+          .getTracks()
+          .forEach((track) =>
+            track.stop(),
+          );
+
+        return;
+      }
+
+      if (videoRef.current) {
+        videoRef.current.srcObject =
+          stream;
+      }
+
+      const devices =
+        await navigator.mediaDevices.enumerateDevices();
+
+      const videoDevices =
+        devices.filter(
+          (device) =>
+            device.kind === "videoinput",
+        );
+
+      setCameras(videoDevices);
 
       if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "d"
+        !selectedCameraId &&
+        stream.getVideoTracks().length
+      ) {
+        const settings =
+          stream
+            .getVideoTracks()[0]
+            .getSettings();
+
+        if (settings.deviceId) {
+          setSelectedCameraId(
+            settings.deviceId,
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        "Camera unavailable:",
+        err,
+      );
+
+      if (!cancelled) {
+        setCameraError(true);
+      }
+    }
+  }
+
+  startCamera();
+
+  return () => {
+    cancelled = true;
+
+    stream
+      ?.getTracks()
+      .forEach((track) =>
+        track.stop(),
+      );
+  };
+}, [selectedCameraId]);
+
+  /*
+   * Camera.
+   */
+  // useEffect(() => {
+  //   let stream;
+  //   let cancelled = false;
+    
+    
+
+  //   async function startCamera() {
+  //     try {
+  //       stream =
+  //         await navigator.mediaDevices.getUserMedia(
+  //           {
+  //             video: true,
+  //             audio: false,
+  //           },
+  //         );
+
+  //       if (cancelled) {
+  //         stream
+  //           .getTracks()
+  //           .forEach(
+  //             (track) =>
+  //               track.stop(),
+  //           );
+
+  //         return;
+  //       }
+
+  //       if (videoRef.current) {
+  //         videoRef.current.srcObject =
+  //           stream;
+  //       }
+  //     } catch (err) {
+  //       console.error(
+  //         "Camera unavailable:",
+  //         err,
+  //       );
+
+  //       if (!cancelled) {
+  //         setCameraError(true);
+  //       }
+  //     }
+  //   }
+
+  //   startCamera();
+
+  //   return () => {
+  //     cancelled = true;
+
+  //     stream
+  //       ?.getTracks()
+  //       .forEach((track) =>
+  //         track.stop(),
+  //       );
+  //   };
+  // }, []);
+
+  
+
+  /*
+   * Secret demo controls.
+   *
+   * Cmd/Ctrl+D = toggle
+   * demo sensor mode
+   *
+   * N = normal HR
+   * S = elevated HR
+   */
+  useEffect(() => {
+    function handleKey(event) {
+      const target =
+        event.target;
+
+      const typing =
+        target instanceof
+          HTMLInputElement ||
+        target instanceof
+          HTMLTextAreaElement ||
+        target instanceof
+          HTMLSelectElement ||
+        target?.isContentEditable;
+
+      if (typing) return;
+
+      if (
+        (event.metaKey ||
+          event.ctrlKey) &&
+        event.key.toLowerCase() ===
+          "d"
       ) {
         event.preventDefault();
 
-        setDemoMode((current) => !current);
+        setDemoMode(
+          (current) =>
+            !current,
+        );
+
+        return;
+      }
+
+      if (!demoMode) return;
+
+      if (
+        event.key.toLowerCase() ===
+        "n"
+      ) {
+        setDemoHeartRate(76);
+      }
+
+      if (
+        event.key.toLowerCase() ===
+        "s"
+      ) {
+        setDemoHeartRate(138);
       }
     }
 
-    window.addEventListener("keydown", handleShortcut);
+    window.addEventListener(
+      "keydown",
+      handleKey,
+    );
 
-    return () => {
+    return () =>
       window.removeEventListener(
         "keydown",
-        handleShortcut,
+        handleKey,
       );
-    };
-  }, []);
+  }, [demoMode]);
 
   /*
-   * -----------------------------------------
-   * POLL LATEST HEALTHKIT HEART RATE
-   *
-   * The iPhone bridge will POST samples to:
-   * POST /api/heart-rate
-   *
-   * Dashboard reads the most recent sample here.
-   * -----------------------------------------
+   * Poll newest HealthKit
+   * sample.
    */
   useEffect(() => {
     let cancelled = false;
 
-    async function loadHeartRate() {
+    async function load() {
       if (demoMode) return;
 
       try {
-        const response = await fetch(
-          "/api/heart-rate",
-        );
+        const response =
+          await fetch(
+            "/api/heart-rate",
+          );
 
         if (!response.ok) {
           throw new Error(
@@ -172,113 +460,222 @@ export default function Dashboard({ patient }) {
           );
         }
 
-        const result = await response.json();
+        const result =
+          await response.json();
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
-        if (result.heartRate !== null) {
-          setLiveHeartRate(result.heartRate);
-          setHeartRateTimestamp(result.timestamp);
-          setSensorConnected(true);
+        if (
+          result.heartRate !==
+          null
+        ) {
+          setLiveHeartRate(
+            result.heartRate,
+          );
+
+          setHeartRateTimestamp(
+            result.timestamp,
+          );
+
+          setSensorConnected(
+            true,
+          );
         } else {
-          setSensorConnected(false);
+          setSensorConnected(
+            false,
+          );
         }
       } catch (error) {
         if (!cancelled) {
           console.warn(
-            "HealthKit heart rate unavailable:",
+            "Heart rate unavailable:",
             error,
           );
 
-          setSensorConnected(false);
+          setSensorConnected(
+            false,
+          );
         }
       }
     }
 
-    loadHeartRate();
+    load();
 
-    const interval = setInterval(
-      loadHeartRate,
-      2000,
-    );
+    const timer =
+      setInterval(load, 2000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(timer);
     };
   }, [demoMode]);
 
   /*
-   * -----------------------------------------
-   * MULTIMODAL THRESHOLD DETECTOR
-   *
-   * Both signals must remain above threshold
-   * for durationThreshold seconds.
-   * -----------------------------------------
+   * Rolling one-second
+   * analytics buffer.
+   */
+  useEffect(() => {
+    const timer =
+      setInterval(() => {
+        const now = Date.now();
+
+        const latest =
+          latestRef.current;
+
+        rollingRef.current.push(
+          {
+            t: now,
+
+            motion:
+              latest.motion ??
+              0,
+
+            heartRate:
+              latest.heartRate ??
+              null,
+
+            posture:
+              latest.posture ??
+              null,
+
+            regions: {
+              ...latest.regions,
+            },
+          },
+        );
+
+        const cutoff =
+          now -
+          PRE_EVENT_SECONDS *
+            1000;
+
+        rollingRef.current =
+          rollingRef.current.filter(
+            (sample) =>
+              sample.t >=
+              cutoff,
+          );
+      }, 1000);
+
+    return () =>
+      clearInterval(timer);
+  }, []);
+
+  /*
+   * Threshold detector.
    */
   useEffect(() => {
     if (!candidate) {
       candidateStartRef.current = null;
-
       setHoldProgress(0);
-      setEventDetected(false);
 
-      eventLoggedRef.current = false;
+      // Once an event has been confirmed, keep the alert latched
+      // until the caregiver is called or "False Alarm" is pressed.
+      if (!eventDetected) {
+        eventLoggedRef.current = false;
+      }
 
       return;
+}
+
+    if (
+      candidateStartRef.current ===
+      null
+    ) {
+      candidateStartRef.current =
+        Date.now();
     }
 
-    if (candidateStartRef.current === null) {
-      candidateStartRef.current = Date.now();
-    }
+    const timer =
+      setInterval(() => {
+        const onset =
+          candidateStartRef.current;
 
-    const interval = setInterval(() => {
-      const elapsed =
-        (Date.now() -
-          candidateStartRef.current) /
-        1000;
+        const elapsed =
+          (Date.now() -
+            onset) /
+          1000;
 
-      const progress = Math.min(
-        100,
-        (elapsed / durationThreshold) * 100,
-      );
+        setHoldProgress(
+          Math.min(
+            100,
+            (elapsed /
+              durationThreshold) *
+              100,
+          ),
+        );
 
-      setHoldProgress(progress);
+        if (
+          elapsed >=
+            durationThreshold &&
+          !eventLoggedRef.current
+        ) {
+          eventLoggedRef.current =
+            true;
 
-      if (
-        elapsed >= durationThreshold &&
-        !eventLoggedRef.current
-      ) {
-        setEventDetected(true);
+          setEventDetected(true);
 
-        eventLoggedRef.current = true;
+          if (patient) {
+            const window =
+              rollingRef.current.map(
+                (sample) => ({
+                  ...sample,
 
-        if (patient) {
-          addEvent(
-            patient.id,
-            "seizure",
-            "Possible seizure detected: vision and heart-rate thresholds exceeded",
-            {
-              demo: demoMode,
-              visionMotion: pose.motion,
-              heartRate,
-              visionThreshold,
-              heartRateThreshold,
-              requiredDuration:
-                durationThreshold,
-            },
-          );
+                  offsetSec:
+                    Math.round(
+                      ((sample.t -
+                        onset) /
+                        1000) *
+                        10,
+                    ) / 10,
+                }),
+              );
+
+            addEvent(
+              patient.id,
+              "seizure",
+              "Possible seizure detected",
+              {
+                demo:
+                  demoMode,
+
+                riskIndex,
+
+                visionMotion:
+                  pose.motion,
+
+                heartRate,
+
+                visionThreshold,
+
+                heartRateThreshold,
+
+                requiredDuration:
+                  durationThreshold,
+
+                regions: {
+                  ...pose.regions,
+                },
+
+                window,
+              },
+            );
+          }
         }
-      }
-    }, 100);
+      }, 100);
 
-    return () => clearInterval(interval);
+    return () =>
+      clearInterval(timer);
   }, [
     candidate,
     durationThreshold,
     patient,
     demoMode,
+    riskIndex,
     pose.motion,
+    pose.regions,
     heartRate,
     visionThreshold,
     heartRateThreshold,
@@ -296,8 +693,11 @@ export default function Dashboard({ patient }) {
       );
     }
 
-    candidateStartRef.current = null;
-    eventLoggedRef.current = false;
+    candidateStartRef.current =
+      null;
+
+    eventLoggedRef.current =
+      false;
 
     setHoldProgress(0);
     setEventDetected(false);
@@ -307,152 +707,106 @@ export default function Dashboard({ patient }) {
     }
   }
 
-  /*
-   * Confidence is intentionally simple and
-   * interpretable for the hackathon:
-   *
-   * 50% from visual motion
-   * 50% from heart rate
-   */
-  const visionConfidence = clamp(
-    (pose.motion / visionThreshold) * 50,
-    0,
-    50,
-  );
-
-  const heartConfidence =
-    heartRate === null
-      ? 0
-      : clamp(
-          (heartRate /
-            heartRateThreshold) *
-            50,
-          0,
-          50,
-        );
-
-  const combinedConfidence = Math.round(
-    visionConfidence + heartConfidence,
-  );
-
   let statusLabel = "NORMAL";
+
   let statusDescription =
-    "Signals are below the configured detection thresholds.";
+    "Curently, both heart rate and movement are below seizure thresholds.";
 
-  if (candidate && !eventDetected) {
-    statusLabel = "VERIFYING";
+  if (
+    candidate &&
+    !eventDetected
+  ) {
+    statusLabel =
+      "VERIFYING";
 
-    statusDescription = `Both signals are elevated. Verifying for ${durationThreshold} seconds before alerting.`;
+    statusDescription =
+      `Vision and heart rate are elevated. Verifying for ${durationThreshold} seconds.`;
   }
 
   if (eventDetected) {
-    statusLabel = "POSSIBLE SEIZURE";
+    statusLabel =
+      "POSSIBLE SEIZURE";
 
     statusDescription =
-      "Vision and heart-rate thresholds remained elevated long enough to confirm the event.";
+      "Both signals remained above threshold long enough to trigger an alert.";
   }
 
   return (
     <main>
-      {/* SENSOR MODE BAR */}
       <div
         className="card"
-        style={styles.modeBar}
+        style={
+          styles.modeBar
+        }
       >
-        <div style={styles.modeLeft}>
+        <div
+          style={
+            styles.modeLeft
+          }
+        >
           <span
             style={{
               ...styles.modeDot,
-              background: demoMode
-                ? "#f4b860"
-                : sensorConnected
-                  ? "#31d6a6"
-                  : "#78909b",
-              boxShadow:
-                demoMode || sensorConnected
-                  ? `0 0 10px ${
-                      demoMode
-                        ? "#f4b860"
-                        : "#31d6a6"
-                    }`
-                  : "none",
+
+              background:
+                demoMode
+                  ? "#f4b860"
+                  : sensorConnected
+                    ? "#31d6a6"
+                    : "#78909b",
             }}
           />
 
           <div>
-            <strong style={styles.modeTitle}>
+            <strong
+              style={
+                styles.modeTitle
+              }
+            >
               {demoMode
                 ? "DEMO SENSOR STREAM"
                 : "LIVE HEALTHKIT"}
             </strong>
 
-            <div style={styles.modeSubtitle}>
+            <div
+              style={
+                styles.modeSubtitle
+              }
+            >
               {demoMode
-                ? "Heart rate is simulated · vision remains live"
+                ? "Simulated wearable input · live vision unchanged"
                 : sensorConnected
-                  ? `Latest Apple Health sample ${formatAge(
-                      heartRateTimestamp,
-                    )}`
-                  : "Waiting for Apple Health heart-rate sample"}
+                  ? `Latest heart-rate sample`
+                    // ? `Latest heart-rate sample ${formatAge(
+                    //   heartRateTimestamp,
+                    // )}`
+                  : "Waiting for Apple Health sample"}
             </div>
           </div>
         </div>
 
-        <span style={styles.shortcut}>
-          ⌘D / Ctrl+D
+        <span
+          style={
+            styles.shortcut
+          }
+        >
+          ⌘D
         </span>
       </div>
 
-      {/* ONLY APPEARS AFTER SECRET DEMO MODE IS ENABLED */}
-      {demoMode && (
-        <div
-          className="demoControls"
-          style={{
-            marginTop: 12,
-          }}
-        >
-          <span>Demo heart rate:</span>
-
-          <button
-            className={
-              demoHeartRate === 76
-                ? "selected"
-                : ""
-            }
-            onClick={() =>
-              setDemoHeartRate(76)
-            }
-          >
-            Baseline · 76 bpm
-          </button>
-
-          <button
-            className={
-              demoHeartRate === 138
-                ? "selected dangerButton"
-                : ""
-            }
-            onClick={() =>
-              setDemoHeartRate(138)
-            }
-          >
-            Elevated · 138 bpm
-          </button>
-        </div>
-      )}
-
-      {/* ALERT */}
       {eventDetected && (
         <div className="alertBanner">
           <div>
             <strong>
-              ⚠ Possible seizure detected
+              ⚠ Possible seizure
+              detected
             </strong>
 
             <p>
-              Vision and heart-rate signals
-              exceeded their thresholds for{" "}
-              {durationThreshold} seconds.
+              Personalized vision
+              and heart-rate
+              thresholds were
+              exceeded.
             </p>
           </div>
 
@@ -466,7 +820,9 @@ export default function Dashboard({ patient }) {
 
             <button
               className="secondary"
-              onClick={markFalseAlarm}
+              onClick={
+                markFalseAlarm
+              }
             >
               False Alarm
             </button>
@@ -475,22 +831,25 @@ export default function Dashboard({ patient }) {
       )}
 
       <section className="grid">
-        {/* CAMERA */}
         <div className="card cameraCard">
           <div className="cardHeader">
             <div>
-              <h2>Live Vision</h2>
+              <h2>
+                Live Vision
+              </h2>
 
               <p>
-                Computer vision movement
-                analysis
+                Computer vision
+                movement analysis
               </p>
             </div>
 
-            <div className="toggle">
+            {/* <div className="toggle">
               <button
                 className={
-                  !privacy ? "active" : ""
+                  !privacy
+                    ? "active"
+                    : ""
                 }
                 onClick={() =>
                   setPrivacy(false)
@@ -501,7 +860,9 @@ export default function Dashboard({ patient }) {
 
               <button
                 className={
-                  privacy ? "active" : ""
+                  privacy
+                    ? "active"
+                    : ""
                 }
                 onClick={() =>
                   setPrivacy(true)
@@ -509,7 +870,78 @@ export default function Dashboard({ patient }) {
               >
                 Privacy
               </button>
-            </div>
+            </div> */}
+            <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <select
+                  value={selectedCameraId}
+                  onChange={(event) =>
+                    setSelectedCameraId(
+                      event.target.value,
+                    )
+                  }
+                  style={{
+                    background: "#07141a",
+                    color: "#edf8fa",
+                    border: "1px solid #1b3741",
+                    borderRadius: 8,
+                    padding: "7px 10px",
+                    fontSize: 11,
+                    maxWidth: 190,
+                  }}
+                >
+                  {cameras.length === 0 && (
+                    <option value="">
+                      Detecting cameras…
+                    </option>
+                  )}
+
+                  {cameras.map(
+                    (camera, index) => (
+                      <option
+                        key={camera.deviceId}
+                        value={camera.deviceId}
+                      >
+                        {camera.label ||
+                          `Camera ${index + 1}`}
+                      </option>
+                    ),
+                  )}
+                </select>
+
+                <div className="toggle">
+                  <button
+                    className={
+                      !privacy
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() =>
+                      setPrivacy(false)
+                    }
+                  >
+                    Raw
+                  </button>
+
+                  <button
+                    className={
+                      privacy
+                        ? "active"
+                        : ""
+                    }
+                    onClick={() =>
+                      setPrivacy(true)
+                    }
+                  >
+                    Privacy
+                  </button>
+                </div>
+              </div>
           </div>
 
           <div className="videoArea">
@@ -519,26 +951,31 @@ export default function Dashboard({ patient }) {
               muted
               playsInline
               className={
-                privacy ? "hiddenVideo" : ""
+                privacy
+                  ? "hiddenVideo"
+                  : ""
               }
             />
 
             <canvas
               ref={canvasRef}
               className={`poseCanvas ${
-                privacy ? "" : "hiddenCanvas"
+                privacy
+                  ? ""
+                  : "hiddenCanvas"
               }`}
             />
 
             {privacy && (
               <div className="privacyCaption">
-                Pose-only view · raw imagery
-                hidden
+                Pose-only view ·
+                raw imagery hidden
               </div>
             )}
 
             {(cameraError ||
-              pose.status !== "tracking") && (
+              pose.status !==
+                "tracking") && (
               <div className="poseMessage">
                 {poseMessage(
                   cameraError,
@@ -550,7 +987,8 @@ export default function Dashboard({ patient }) {
             <div
               className={`visionBadge ${
                 !cameraError &&
-                pose.status === "tracking"
+                pose.status ===
+                  "tracking"
                   ? ""
                   : "idle"
               }`}
@@ -558,14 +996,14 @@ export default function Dashboard({ patient }) {
               <span />
 
               {!cameraError &&
-              pose.status === "tracking"
+              pose.status ===
+                "tracking"
                 ? `Tracking · motion ${pose.motion}%`
                 : "Not tracking"}
             </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN */}
         <div className="rightColumn">
           <div
             className={`card statusCard ${
@@ -580,156 +1018,145 @@ export default function Dashboard({ patient }) {
 
             <div className="statusRow">
               <div className="statusDot" />
-              <h2>{statusLabel}</h2>
+
+              <h2>
+                {statusLabel}
+              </h2>
             </div>
 
-            <p>{statusDescription}</p>
+            <p>
+              {statusDescription}
+            </p>
 
             {candidate &&
               !eventDetected && (
                 <div
-                  style={styles.verifyTrack}
+                  style={
+                    styles.verifyTrack
+                  }
                 >
                   <div
                     style={{
                       ...styles.verifyFill,
-                      width: `${holdProgress}%`,
+
+                      width:
+                        `${holdProgress}%`,
                     }}
                   />
                 </div>
               )}
           </div>
 
-          {/* LIVE SIGNALS */}
           <div className="card">
-            <h2>Live Signals</h2>
+            <h2>
+              Live Signals
+            </h2>
 
             <p>
-              Apple Health + computer vision
+              Apple Health +
+              computer vision: these recorded measurements are used to determine whether a seizure event is happening
             </p>
 
             <Metric
               label="Heart Rate"
               value={
-                heartRate === null
+                heartRate ===
+                null
                   ? "Waiting…"
                   : `${heartRate} bpm`
               }
               percent={
-                heartRate === null
+                heartRate ===
+                null
                   ? 0
                   : Math.min(
-                      (heartRate / 180) * 100,
+                      (heartRate /
+                        180) *
+                        100,
                       100,
                     )
-              }
-              passed={
-                heartRateAboveThreshold
               }
             />
 
             <Metric
               label="Vision Motion"
               value={`${pose.motion}%`}
-              percent={pose.motion}
-              passed={
-                visionAboveThreshold
+              percent={
+                pose.motion
               }
             />
-
-            <div
-              style={styles.freshness}
-            >
-              {demoMode
-                ? "Simulated wearable input"
-                : heartRateTimestamp
-                  ? `HealthKit updated ${formatAge(
-                      heartRateTimestamp,
-                    )}`
-                  : "No HealthKit sample received yet"}
-            </div>
           </div>
 
-          {/* DETECTION SETTINGS */}
           <div className="card">
-            <h2>Detection Settings</h2>
+            <h2>
+              Personalized Detection
+              Settings
+            </h2>
 
             <p>
-              Adjustable multimodal thresholds
+              An alert is triggered when BOTH signals stay above
+              these thresholds for the required duration. As more data is collected for this user, these numbers can be changed to call for help either
+              earlier into detection (lower time threshold) or with less heartrate + movement spike. 
             </p>
 
             <ThresholdControl
               label="Vision motion"
-              value={visionThreshold}
-              setValue={setVisionThreshold}
+              value={
+                visionThreshold
+              }
+              setValue={
+                setVisionThreshold
+              }
               min={5}
               max={100}
               step={5}
               unit="%"
-              liveValue={pose.motion}
             />
 
             <ThresholdControl
               label="Heart rate"
-              value={heartRateThreshold}
-              setValue={setHeartRateThreshold}
+              value={
+                heartRateThreshold
+              }
+              setValue={
+                setHeartRateThreshold
+              }
               min={60}
               max={200}
               step={5}
               unit=" bpm"
-              liveValue={heartRate}
             />
 
             <ThresholdControl
               label="Required duration"
-              value={durationThreshold}
-              setValue={setDurationThreshold}
+              value={
+                durationThreshold
+              }
+              setValue={
+                setDurationThreshold
+              }
               min={1}
               max={10}
               step={1}
               unit=" sec"
             />
-
-            <div
-              style={styles.logicSummary}
-            >
-              <div>
-                <ThresholdState
-                  passed={
-                    visionAboveThreshold
-                  }
-                  label={`Vision ≥ ${visionThreshold}%`}
-                />
-
-                <ThresholdState
-                  passed={
-                    heartRateAboveThreshold
-                  }
-                  label={`HR ≥ ${heartRateThreshold} bpm`}
-                />
-              </div>
-
-              <strong>
-                BOTH for {durationThreshold}s
-                → ALERT
-              </strong>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* BOTTOM */}
       <section className="bottomGrid">
         <div className="card">
           <div className="riskHeader">
             <div>
               <h2>
-                Multimodal Event Confidence
+                Seizure Risk Index
               </h2>
 
               <p>
-                Interpretable vision +
-                physiological sensor fusion
+                The score is based on the weaker of the two signals relative to its
+                personalized threshold. A score of 100 means both vision and heart rate
+                have reached their thresholds; the alert triggers only if they remain
+                above threshold for the required duration.
               </p>
             </div>
 
@@ -740,11 +1167,15 @@ export default function Dashboard({ patient }) {
                   : "risk"
               }
             >
-              {combinedConfidence}%
+              {riskIndex}
             </div>
           </div>
 
-          <div className="riskTrack">
+          <div
+            style={
+              styles.riskTrackOuter
+            }
+          >
             <div
               className={`riskFill ${
                 eventDetected
@@ -752,29 +1183,42 @@ export default function Dashboard({ patient }) {
                   : ""
               }`}
               style={{
-                width: `${combinedConfidence}%`,
+                width:
+                  `${riskBarPercent}%`,
               }}
             />
+
+            <div
+              style={{
+                ...styles.thresholdMarker,
+
+                left:
+                  `${alertMarkerPercent}%`,
+              }}
+            >
+              <span
+                style={
+                  styles.markerLabel
+                }
+              >
+                Alert threshold
+              </span>
+            </div>
           </div>
 
           <div className="signalBoxes">
             <Signal
-              label="Vision Motion"
+              label="Vision"
               value={`${pose.motion}%`}
-              passed={
-                visionAboveThreshold
-              }
             />
 
             <Signal
               label="Heart Rate"
               value={
-                heartRate === null
+                heartRate ===
+                null
                   ? "Waiting"
                   : `${heartRate} bpm`
-              }
-              passed={
-                heartRateAboveThreshold
               }
             />
 
@@ -790,108 +1234,125 @@ export default function Dashboard({ patient }) {
           </div>
         </div>
 
-        <div className="card">
-          <h2>Detection Logic</h2>
+        <a
+          href="#/analytics"
+          className="card"
+          style={
+            styles.analyticsPreview
+          }
+        >
+          <div>
+            <span className="eyebrow">
+              ANALYTICS PREVIEW
+            </span>
 
-          <p>
-            Current decision state
-          </p>
+            <h2
+              style={{
+                marginTop: 8,
+              }}
+            >
+              Movement Insights
+            </h2>
 
-          <Timeline
-            time="Vision"
-            text={`${pose.motion}% ${
-              visionAboveThreshold
-                ? "✓ above threshold"
-                : "below threshold"
-            }`}
-            active={
-              visionAboveThreshold
+            <p>
+              Explore historical
+              events and
+              patient-specific
+              patterns.
+            </p>
+          </div>
+
+          <div
+            style={
+              styles.previewStat
             }
-          />
+          >
+            <span>
+              Most active region
+              now
+            </span>
 
-          <Timeline
-            time="Heart"
-            text={
-              heartRate === null
-                ? "Waiting for HealthKit"
-                : `${heartRate} bpm ${
-                    heartRateAboveThreshold
-                      ? "✓ above threshold"
-                      : "below threshold"
-                  }`
-            }
-            active={
-              heartRateAboveThreshold
-            }
-          />
+            <strong>
+              {
+                REGION_LABELS[
+                  activeRegion[0]
+                ]
+              }
+            </strong>
 
-          {candidate &&
-            !eventDetected && (
-              <Timeline
-                time="Now"
-                text={`Verifying multimodal event (${Math.round(
-                  holdProgress,
-                )}%)`}
-                active
-              />
+            <b>
+              {activeRegion[1]}%
+            </b>
+          </div>
+
+          <div
+            style={
+              styles.previewRegions
+            }
+          >
+            {Object.entries(
+              pose.regions,
+            ).map(
+              ([
+                region,
+                value,
+              ]) => (
+                <div
+                  key={region}
+                >
+                  <span>
+                    {
+                      REGION_LABELS[
+                        region
+                      ]
+                    }
+                  </span>
+
+                  <div
+                    style={
+                      styles.previewTrack
+                    }
+                  >
+                    <div
+                      style={{
+                        ...styles.previewFill,
+
+                        width:
+                          `${value}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ),
             )}
+          </div>
 
-          {eventDetected && (
-            <Timeline
-              time="Now"
-              text="Multimodal event confirmed"
-              danger
-            />
-          )}
-
-          {!candidate &&
-            !eventDetected && (
-              <Timeline
-                time="Now"
-                text="No confirmed event"
-                active
-              />
-            )}
-        </div>
+          <strong
+            style={
+              styles.learnMore
+            }
+          >
+            View full analytics →
+          </strong>
+        </a>
       </section>
     </main>
   );
-}
-
-function poseMessage(cameraError, status) {
-  if (cameraError) {
-    return "Camera unavailable. Check browser permissions.";
-  }
-
-  if (status === "loading") {
-    return "Loading pose model…";
-  }
-
-  if (status === "error") {
-    return "Pose model failed to load.";
-  }
-
-  return "No person in view";
 }
 
 function Metric({
   label,
   value,
   percent,
-  passed,
 }) {
   return (
     <div className="metric">
       <div className="metricRow">
-        <span>{label}</span>
+        <span>
+          {label}
+        </span>
 
-        <strong
-          style={{
-            color: passed
-              ? "#f4b860"
-              : undefined,
-          }}
-        >
+        <strong>
           {value}
         </strong>
       </div>
@@ -899,11 +1360,12 @@ function Metric({
       <div className="smallTrack">
         <div
           style={{
-            width: `${clamp(
-              percent,
-              0,
-              100,
-            )}%`,
+            width:
+              `${clamp(
+                percent,
+                0,
+                100,
+              )}%`,
           }}
         />
       </div>
@@ -914,46 +1376,16 @@ function Metric({
 function Signal({
   label,
   value,
-  passed = false,
 }) {
   return (
-    <div
-      className="signalBox"
-      style={
-        passed
-          ? {
-              borderColor:
-                "rgba(244,184,96,.65)",
-            }
-          : undefined
-      }
-    >
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
+    <div className="signalBox">
+      <span>
+        {label}
+      </span>
 
-function Timeline({
-  time,
-  text,
-  active,
-  danger,
-}) {
-  return (
-    <div className="timeline">
-      <div
-        className={`timelineDot ${
-          active ? "activeDot" : ""
-        } ${
-          danger ? "dangerDot" : ""
-        }`}
-      />
-
-      <div>
-        <span>{time}</span>
-        <strong>{text}</strong>
-      </div>
+      <strong>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -966,7 +1398,6 @@ function ThresholdControl({
   max,
   step,
   unit,
-  liveValue,
 }) {
   function update(next) {
     setValue(
@@ -979,9 +1410,19 @@ function ThresholdControl({
   }
 
   return (
-    <div style={styles.threshold}>
-      <div style={styles.thresholdHeader}>
-        <span>{label}</span>
+    <div
+      style={
+        styles.threshold
+      }
+    >
+      <div
+        style={
+          styles.thresholdHeader
+        }
+      >
+        <span>
+          {label}
+        </span>
 
         <strong>
           {value}
@@ -989,21 +1430,20 @@ function ThresholdControl({
         </strong>
       </div>
 
-      {liveValue !== undefined && (
-        <div style={styles.currentReading}>
-          Current:{" "}
-          {liveValue === null
-            ? "waiting"
-            : `${liveValue}${unit}`}
-        </div>
-      )}
-
-      <div style={styles.thresholdControls}>
+      <div
+        style={
+          styles.thresholdControls
+        }
+      >
         <button
           type="button"
-          style={styles.adjustButton}
+          style={
+            styles.adjustButton
+          }
           onClick={() =>
-            update(value - step)
+            update(
+              value - step,
+            )
           }
         >
           −
@@ -1015,20 +1455,27 @@ function ThresholdControl({
           max={max}
           step={step}
           value={value}
-          onChange={(event) =>
-            update(event.target.value)
+          onChange={(e) =>
+            update(
+              e.target.value,
+            )
           }
           style={{
             flex: 1,
-            accentColor: "#31d6a6",
+            accentColor:
+              "#31d6a6",
           }}
         />
 
         <button
           type="button"
-          style={styles.adjustButton}
+          style={
+            styles.adjustButton
+          }
           onClick={() =>
-            update(value + step)
+            update(
+              value + step,
+            )
           }
         >
           +
@@ -1038,186 +1485,227 @@ function ThresholdControl({
   );
 }
 
-function ThresholdState({
-  passed,
-  label,
-}) {
-  return (
-    <div style={styles.thresholdState}>
-      <span
-        style={{
-          ...styles.miniDot,
-          background: passed
-            ? "#f4b860"
-            : "#405761",
-        }}
-      />
+function poseMessage(
+  cameraError,
+  status,
+) {
+  if (cameraError) {
+    return "Camera unavailable. Check browser permissions.";
+  }
 
-      {label}
-    </div>
-  );
+  if (
+    status === "loading"
+  ) {
+    return "Loading pose model…";
+  }
+
+  if (
+    status === "error"
+  ) {
+    return "Pose model failed to load.";
+  }
+
+  return "No person in view";
 }
 
-function clamp(value, min, max) {
+function clamp(
+  value,
+  min,
+  max,
+) {
   return Math.min(
     max,
     Math.max(min, value),
   );
 }
 
-function formatAge(timestamp) {
-  if (!timestamp) return "unknown";
-
-  const date = new Date(timestamp);
-
-  if (Number.isNaN(date.getTime())) {
+function formatAge(
+  timestamp,
+) {
+  if (!timestamp) {
     return "unknown";
   }
 
-  const seconds = Math.max(
-    0,
-    Math.round(
-      (Date.now() - date.getTime()) /
-        1000,
-    ),
-  );
+  const seconds =
+    Math.max(
+      0,
+      Math.round(
+        (Date.now() -
+          new Date(
+            timestamp,
+          ).getTime()) /
+          1000,
+      ),
+    );
 
-  if (seconds < 5) return "just now";
+  if (seconds < 5) {
+    return "just now";
+  }
 
   if (seconds < 60) {
     return `${seconds}s ago`;
   }
 
-  const minutes = Math.floor(
+  return `${Math.floor(
     seconds / 60,
-  );
-
-  return `${minutes}m ago`;
+  )}m ago`;
 }
 
 const styles = {
   modeBar: {
     padding: "13px 16px",
-    marginBottom: "18px",
+    marginBottom: 18,
     display: "flex",
+    justifyContent:
+      "space-between",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: "16px",
   },
 
   modeLeft: {
     display: "flex",
+    gap: 11,
     alignItems: "center",
-    gap: "11px",
   },
 
   modeDot: {
-    width: "9px",
-    height: "9px",
+    width: 9,
+    height: 9,
     borderRadius: "50%",
-    flexShrink: 0,
   },
 
   modeTitle: {
     display: "block",
-    fontSize: "11px",
+    fontSize: 11,
     letterSpacing: ".09em",
   },
 
   modeSubtitle: {
-    marginTop: "3px",
-    fontSize: "11px",
+    marginTop: 3,
+    fontSize: 11,
     color: "#78909b",
   },
 
   shortcut: {
     color: "#536f79",
-    fontSize: "10px",
-    border: "1px solid #17353f",
-    borderRadius: "7px",
+    fontSize: 10,
+    border:
+      "1px solid #17353f",
+    borderRadius: 7,
     padding: "5px 8px",
-    whiteSpace: "nowrap",
   },
 
   verifyTrack: {
-    height: "5px",
-    borderRadius: "20px",
+    height: 5,
     background: "#051015",
+    borderRadius: 20,
     overflow: "hidden",
-    marginTop: "17px",
+    marginTop: 16,
   },
 
   verifyFill: {
     height: "100%",
     background:
-      "linear-gradient(90deg, #f4b860, #ff6577)",
-    transition: "width .1s linear",
-  },
-
-  freshness: {
-    marginTop: "17px",
-    fontSize: "10px",
-    color: "#5b7781",
+      "linear-gradient(90deg,#f4b860,#ff6577)",
   },
 
   threshold: {
-    marginTop: "18px",
+    marginTop: 18,
   },
 
   thresholdHeader: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    fontSize: "12px",
-  },
-
-  currentReading: {
-    color: "#66828d",
-    fontSize: "10px",
-    marginTop: "3px",
+    justifyContent:
+      "space-between",
+    fontSize: 12,
   },
 
   thresholdControls: {
     display: "flex",
+    gap: 8,
     alignItems: "center",
-    gap: "9px",
-    marginTop: "9px",
+    marginTop: 8,
   },
 
   adjustButton: {
-    width: "30px",
-    height: "30px",
-    border: "1px solid #1b3741",
-    borderRadius: "7px",
+    width: 30,
+    height: 30,
+    border:
+      "1px solid #1b3741",
+    borderRadius: 7,
     background: "#07141a",
     color: "#edf8fa",
+  },
+
+  riskTrackOuter: {
+    position: "relative",
+    height: 10,
+    margin:
+      "30px 0 26px",
+    background: "#051015",
+    borderRadius: 20,
+  },
+
+  thresholdMarker: {
+    position: "absolute",
+    top: -8,
+    bottom: -8,
+    width: 2,
+    background: "#f4b860",
+  },
+
+  markerLabel: {
+    position: "absolute",
+    top: -20,
+    left: "50%",
+    transform:
+      "translateX(-50%)",
+    whiteSpace: "nowrap",
+    fontSize: 9,
+    color: "#f4b860",
+  },
+
+  analyticsPreview: {
+    textDecoration: "none",
+    color: "inherit",
+    display: "block",
     cursor: "pointer",
   },
 
-  logicSummary: {
-    marginTop: "20px",
-    padding: "12px",
-    border: "1px solid #17323b",
-    borderRadius: "10px",
-    background: "#07141a",
-    fontSize: "10px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "12px",
+  previewStat: {
+    display: "grid",
+    gridTemplateColumns:
+      "1fr auto auto",
+    gap: 10,
+    marginTop: 18,
+    alignItems: "baseline",
   },
 
-  thresholdState: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    color: "#87a0aa",
-    margin: "3px 0",
+  previewRegions: {
+    display: "grid",
+    gap: 8,
+    marginTop: 18,
+    fontSize: 10,
+    color: "#78909b",
   },
 
-  miniDot: {
-    width: "6px",
-    height: "6px",
-    borderRadius: "50%",
+  previewTrack: {
+    height: 4,
+    background: "#051015",
+    borderRadius: 10,
+    overflow: "hidden",
+    marginTop: 3,
+  },
+
+  previewFill: {
+    height: "100%",
+    background:
+      "linear-gradient(90deg,#31d6a6,#3ca7ff)",
+  },
+
+  learnMore: {
+    display: "block",
+    marginTop: 18,
+    color: "#31d6a6",
+    fontSize: 12,
   },
 };

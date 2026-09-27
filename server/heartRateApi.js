@@ -1,28 +1,14 @@
-/*
- * Temporary hackathon sensor bridge.
- *
- * GET  /api/heart-rate
- * POST /api/heart-rate
- *
- * POST example:
- *
- * {
- *   "heartRate": 87,
- *   "timestamp": "2026-09-27T04:15:00.000Z",
- *   "source": "HealthKit"
- * }
- *
- * This is intentionally in-memory for now.
- * Restarting Vite clears the latest sample.
- */
-
 let latestSample = {
   heartRate: null,
   timestamp: null,
   source: null,
 };
 
-function send(res, status, value) {
+function send(
+  res,
+  status,
+  value,
+) {
   res.statusCode = status;
 
   res.setHeader(
@@ -30,13 +16,17 @@ function send(res, status, value) {
     "application/json",
   );
 
-  res.end(JSON.stringify(value));
+  res.end(
+    JSON.stringify(value),
+  );
 }
 
 async function readBody(req) {
   let body = "";
 
-  for await (const chunk of req) {
+  for await (
+    const chunk of req
+  ) {
     body += chunk;
   }
 
@@ -45,8 +35,13 @@ async function readBody(req) {
     : {};
 }
 
-async function handle(req, res) {
-  if (req.method === "GET") {
+async function handle(
+  req,
+  res,
+) {
+  if (
+    req.method === "GET"
+  ) {
     return send(
       res,
       200,
@@ -54,46 +49,46 @@ async function handle(req, res) {
     );
   }
 
-  if (req.method === "POST") {
-    const body = await readBody(req);
+  if (
+    req.method === "POST"
+  ) {
+    const body =
+      await readBody(req);
 
-    const heartRate = Number(
-      body.heartRate,
-    );
+    const heartRate =
+      Number(
+        body.heartRate,
+      );
 
     if (
-      !Number.isFinite(heartRate) ||
+      !Number.isFinite(
+        heartRate,
+      ) ||
       heartRate < 20 ||
       heartRate > 250
     ) {
-      return send(res, 400, {
-        error:
-          "heartRate must be a number between 20 and 250 bpm",
-      });
-    }
-
-    const suppliedTimestamp =
-      body.timestamp
-        ? new Date(body.timestamp)
-        : new Date();
-
-    if (
-      Number.isNaN(
-        suppliedTimestamp.getTime(),
-      )
-    ) {
-      return send(res, 400, {
-        error: "Invalid timestamp",
-      });
+      return send(
+        res,
+        400,
+        {
+          error:
+            "heartRate must be between 20 and 250",
+        },
+      );
     }
 
     latestSample = {
-      heartRate: Math.round(
-        heartRate,
-      ),
+      heartRate:
+        Math.round(
+          heartRate,
+        ),
 
       timestamp:
-        suppliedTimestamp.toISOString(),
+        body.timestamp
+          ? new Date(
+              body.timestamp,
+            ).toISOString()
+          : new Date().toISOString(),
 
       source:
         String(
@@ -102,10 +97,6 @@ async function handle(req, res) {
         ),
     };
 
-    console.log(
-      `[heart-rate] ${latestSample.heartRate} bpm from ${latestSample.source}`,
-    );
-
     return send(
       res,
       200,
@@ -113,12 +104,21 @@ async function handle(req, res) {
     );
   }
 
-  return send(res, 405, {
-    error: "Method not allowed",
-  });
+  return send(
+    res,
+    405,
+    {
+      error:
+        "Method not allowed",
+    },
+  );
 }
 
-function middleware(req, res, next) {
+function middleware(
+  req,
+  res,
+  next,
+) {
   const url = new URL(
     req.url,
     "http://localhost",
@@ -131,35 +131,40 @@ function middleware(req, res, next) {
     return next();
   }
 
-  handle(req, res).catch((error) => {
-    console.error(
-      "[heart-rate api]",
-      error,
-    );
+  handle(req, res).catch(
+    (error) => {
+      console.error(
+        "[heart-rate api]",
+        error,
+      );
 
-    send(
-      res,
-      error instanceof SyntaxError
-        ? 400
-        : 500,
-      {
-        error: error.message,
-      },
-    );
-  });
+      send(
+        res,
+        500,
+        {
+          error:
+            error.message,
+        },
+      );
+    },
+  );
 }
 
 export default function heartRateApi() {
   return {
     name: "heart-rate-api",
 
-    configureServer(server) {
+    configureServer(
+      server,
+    ) {
       server.middlewares.use(
         middleware,
       );
     },
 
-    configurePreviewServer(server) {
+    configurePreviewServer(
+      server,
+    ) {
       server.middlewares.use(
         middleware,
       );
