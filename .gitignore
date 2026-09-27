@@ -25,3 +25,4 @@ dist-ssr
 
 # Local patient data (health information, keep out of git)
 data/
+.env
