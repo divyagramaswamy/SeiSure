@@ -14,10 +14,10 @@ function newBucket(start) {
   return { start, sum: 0, count: 0, peak: 0, upright: 0, lying: 0 };
 }
 
-function flush(bucket) {
+function flush(patientId, bucket) {
   if (!bucket || bucket.count < MIN_SECONDS_PER_MINUTE) return;
 
-  addSample({
+  addSample(patientId, {
     t: bucket.start,
     mins: bucket.count / 60,
     motion: Math.round(bucket.sum / bucket.count),
@@ -33,9 +33,10 @@ function flush(bucket) {
 
 /**
  * Samples the live pose tracking once a second, saves a summary for each
- * minute to the activity log, and logs sustained intense movement as an event.
+ * minute to the patient's activity log, and logs sustained intense movement
+ * as an event. Records nothing while no patient is selected.
  */
-export default function useActivityRecorder({ status, motion, posture }) {
+export default function useActivityRecorder(patientId, { status, motion, posture }) {
   const latest = useRef({ status, motion, posture });
 
   useEffect(() => {
@@ -43,6 +44,8 @@ export default function useActivityRecorder({ status, motion, posture }) {
   }, [status, motion, posture]);
 
   useEffect(() => {
+    if (!patientId) return;
+
     let bucket = null;
     let intenseSince = null;
     let intenseLogged = false;
@@ -54,7 +57,7 @@ export default function useActivityRecorder({ status, motion, posture }) {
       const now = Date.now();
       const minute = Math.floor(now / 60000) * 60000;
       if (bucket?.start !== minute) {
-        flush(bucket);
+        flush(patientId, bucket);
         bucket = newBucket(minute);
       }
 
@@ -66,7 +69,7 @@ export default function useActivityRecorder({ status, motion, posture }) {
       if (motion >= INTENSE_MOTION) {
         intenseSince ??= now;
         if (!intenseLogged && now - intenseSince >= INTENSE_DURATION) {
-          addEvent("intense", "Intense movement for 3+ seconds");
+          addEvent(patientId, "intense", "Intense movement for 3+ seconds");
           intenseLogged = true;
         }
       } else {
@@ -77,7 +80,7 @@ export default function useActivityRecorder({ status, motion, posture }) {
 
     return () => {
       clearInterval(timer);
-      flush(bucket);
+      flush(patientId, bucket);
     };
-  }, []);
+  }, [patientId]);
 }

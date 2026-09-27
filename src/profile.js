@@ -1,4 +1,7 @@
-const STORAGE_KEY = "neuroguard.patientProfile";
+// Patients are stored in data/patients.json by the dev server (see
+// server/patientApi.js). The selected patient is remembered per browser.
+
+const SELECTED_KEY = "neuroguard.selectedPatient";
 
 export const emptyProfile = {
   patientName: "",
@@ -8,22 +11,50 @@ export const emptyProfile = {
   notes: "",
 };
 
-export function loadProfile() {
+export async function api(path, { method = "GET", body } = {}) {
+  const res = await fetch(`/api/patients${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.error ?? `Request failed (${res.status})`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+export function listPatients() {
+  return api("");
+}
+
+export function createPatient(profile = emptyProfile) {
+  return api("", { method: "POST", body: profile });
+}
+
+export function updatePatient(id, profile) {
+  return api(`/${id}`, { method: "PUT", body: profile });
+}
+
+export function loadSelectedId() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? { ...emptyProfile, ...JSON.parse(saved) } : emptyProfile;
+    return localStorage.getItem(SELECTED_KEY);
   } catch {
-    return emptyProfile;
+    return null;
   }
 }
 
-export function saveProfile(profile) {
+export function saveSelectedId(id) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-    return true;
+    localStorage.setItem(SELECTED_KEY, id);
   } catch {
-    return false;
+    // Not remembered across reloads, but still selected for this session
   }
+}
+
+export function patientLabel(patient) {
+  return patient.patientName.trim() || "Unnamed patient";
 }
 
 // Keeps a leading "+" and digits only, e.g. "(555) 123-4567" -> "5551234567"

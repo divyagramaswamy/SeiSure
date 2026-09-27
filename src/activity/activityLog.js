@@ -1,5 +1,8 @@
-const STORAGE_KEY = "neuroguard.activityLog";
-const KEEP_DAYS = 7;
+import { api } from "../profile";
+
+// How many days of history the profile page shows. Older data stays in
+// data/patients.json.
+const SHOW_DAYS = 7;
 const DAY = 24 * 60 * 60 * 1000;
 
 // Motion score thresholds for each movement level
@@ -19,33 +22,32 @@ export const EVENT_TYPES = {
   call: { label: "Caregiver called", alarming: false },
 };
 
-const emptyLog = { samples: [], events: [] };
+export const emptyLog = { samples: [], events: [] };
 
 export function motionLevel(motion) {
   return LEVELS.find((level) => motion < level.max).key;
 }
 
-export function loadLog() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!saved) return emptyLog;
-
-    const cutoff = Date.now() - KEEP_DAYS * DAY;
-    return {
-      samples: (saved.samples ?? []).filter((s) => s.t >= cutoff),
-      events: (saved.events ?? []).filter((e) => e.t >= cutoff),
-    };
-  } catch {
-    return emptyLog;
-  }
+// The patient's activity from the last SHOW_DAYS days
+export async function fetchLog(patientId) {
+  const log = await api(`/${patientId}/activity`);
+  const cutoff = Date.now() - SHOW_DAYS * DAY;
+  return {
+    samples: log.samples.filter((s) => s.t >= cutoff),
+    events: log.events.filter((e) => e.t >= cutoff),
+  };
 }
 
-function saveLog(log) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(log));
-  } catch (err) {
-    console.error("Could not save activity log:", err);
-  }
+function append(patientId, activity) {
+  return api(`/${patientId}/activity`, { method: "POST", body: activity });
+}
+
+// Fire-and-forget writes from the monitor; a failed save is logged, not
+// shown, so it never interrupts monitoring
+function appendInBackground(patientId, activity) {
+  append(patientId, activity).catch((err) =>
+    console.error("Could not save activity:", err),
+  );
 }
 
 /**
@@ -55,19 +57,17 @@ function saveLog(log) {
  *   motion  average motion score, peak  highest motion score
  *   posture "upright" | "lying" | null
  */
-export function addSample(sample) {
-  const log = loadLog();
-  saveLog({ ...log, samples: [...log.samples, sample] });
+export function addSample(patientId, sample) {
+  appendInBackground(patientId, { samples: [sample] });
 }
 
-export function addEvent(type, text, extra = {}) {
-  const log = loadLog();
+export function addEvent(patientId, type, text, extra = {}) {
   const event = { t: Date.now(), type, text, ...extra };
-  saveLog({ ...log, events: [...log.events, event] });
+  appendInBackground(patientId, { events: [event] });
 }
 
-export function clearLog() {
-  saveLog(emptyLog);
+export function clearLog(patientId) {
+  return api(`/${patientId}/activity`, { method: "DELETE" });
 }
 
 export function hasDemoData(log) {
@@ -144,7 +144,7 @@ function seededRandom(seed) {
 }
 
 // Adds five days of made-up history, marked demo: true, for presentations
-export function addDemoHistory() {
+export function addDemoHistory(patientId) {
   const random = seededRandom(42);
   const now = Date.now();
   const today = new Date();
@@ -188,9 +188,5 @@ export function addDemoHistory() {
     .filter((e) => e.t <= now)
     .map((e) => ({ ...e, demo: true }));
 
-  const log = loadLog();
-  saveLog({
-    samples: [...log.samples, ...samples],
-    events: [...log.events, ...events],
-  });
+  return append(patientId, { samples, events });
 }

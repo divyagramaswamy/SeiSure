@@ -1,31 +1,34 @@
 import { useEffect, useState } from "react";
-import { FilesetResolver, PoseLandmarker } from "@mediapipe/tasks-vision";
+import {
+  DrawingUtils,
+  FilesetResolver,
+  PoseLandmarker,
+} from "@mediapipe/tasks-vision";
 
 // Must match the installed @mediapipe/tasks-vision version (pinned in package.json)
 const WASM_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const MODEL_URL = "/models/pose_landmarker_lite.task";
 
-// Landmark indices: 0 nose, 0-10 face, 11-16 shoulders/elbows/wrists,
-// 23-28 hips/knees/ankles
-const FACE_POINTS = 11;
+// Landmark indices: 11-16 shoulders/elbows/wrists, 23-28 hips/knees/ankles.
+// MediaPipe's "left" is the person's left.
 const MOTION_POINTS = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
 const MIN_VISIBILITY = 0.5;
 
-// Names for the labelled joint numbers, shown as a legend in privacy mode
-export const JOINT_LABELS = [
-  [11, 12, "Shoulders"],
-  [13, 14, "Elbows"],
-  [15, 16, "Wrists"],
-  [23, 24, "Hips"],
-  [25, 26, "Knees"],
-  [27, 28, "Ankles"],
-];
-
-// Skeleton without the face connections, so the face is never drawn
-const BODY_CONNECTIONS = PoseLandmarker.POSE_CONNECTIONS.filter(
-  ({ start, end }) => start >= FACE_POINTS && end >= FACE_POINTS,
-);
+const JOINT_LABELS = {
+  11: "L Shoulder",
+  12: "R Shoulder",
+  13: "L Elbow",
+  14: "R Elbow",
+  15: "L Wrist",
+  16: "R Wrist",
+  23: "L Hip",
+  24: "R Hip",
+  25: "L Knee",
+  26: "R Knee",
+  27: "L Ankle",
+  28: "R Ankle",
+};
 
 // Smoothing time constant for the motion score, in seconds
 const MOTION_SMOOTHING = 0.5;
@@ -99,71 +102,36 @@ function estimatePosture(pose, width, height) {
   return Math.abs(dy) >= Math.abs(dx) ? "upright" : "lying";
 }
 
-function drawPose(ctx, pose, width, height) {
+// Stick figure and joint names. The skeleton is mirrored to match the
+// mirrored video; labels are placed at the mirrored x so the text reads
+// normally.
+function drawPose(ctx, drawingUtils, pose, width, height) {
   ctx.clearRect(0, 0, width, height);
   if (!pose) return;
 
-  const shoulderWidth = distance(
-    toPixels(pose[11], width, height),
-    toPixels(pose[12], width, height),
-  );
-  const lineWidth = Math.max(3, shoulderWidth / 30);
+  ctx.save();
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
 
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "#31d6a6";
-  ctx.fillStyle = "#31d6a6";
-  ctx.shadowColor = "rgba(49, 214, 166, 0.6)";
-  ctx.shadowBlur = 10;
-  ctx.lineWidth = lineWidth;
+  drawingUtils.drawConnectors(pose, PoseLandmarker.POSE_CONNECTIONS, {
+    color: "#31d6a6",
+    lineWidth: 4,
+  });
+  drawingUtils.drawLandmarks(pose, {
+    color: "#8fffe0",
+    fillColor: "#31d6a6",
+    radius: 4,
+  });
 
-  for (const { start, end } of BODY_CONNECTIONS) {
-    if (!visible(pose[start]) || !visible(pose[end])) continue;
-    const a = toPixels(pose[start], width, height);
-    const b = toPixels(pose[end], width, height);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-  }
+  ctx.restore();
 
-  for (let i = FACE_POINTS; i < pose.length; i++) {
-    if (!visible(pose[i])) continue;
-    const p = toPixels(pose[i], width, height);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, lineWidth * 1.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  ctx.font = "14px Inter, sans-serif";
+  ctx.fillStyle = "#baffec";
 
-  // Head drawn as a plain circle at the nose, no facial landmarks
-  if (visible(pose[0])) {
-    const nose = toPixels(pose[0], width, height);
-    ctx.beginPath();
-    ctx.arc(nose.x, nose.y, shoulderWidth * 0.3, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  drawLabels(ctx, pose, width, height, lineWidth);
-}
-
-// Landmark index next to each main joint (see JOINT_LABELS). The canvas is
-// mirrored with CSS to match the video, so each label is flipped back.
-function drawLabels(ctx, pose, width, height, lineWidth) {
-  const fontSize = Math.max(12, Math.round(width / 70));
-
-  ctx.font = `600 ${fontSize}px Inter, -apple-system, sans-serif`;
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
-  ctx.shadowBlur = 4;
-  ctx.fillStyle = "#cfeee5";
-
-  for (const i of MOTION_POINTS) {
-    if (!visible(pose[i])) continue;
-    const p = toPixels(pose[i], width, height);
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    ctx.scale(-1, 1);
-    ctx.fillText(String(i), lineWidth * 2, -lineWidth * 2);
-    ctx.restore();
+  for (const [index, label] of Object.entries(JOINT_LABELS)) {
+    const point = pose[index];
+    if (!visible(point)) continue;
+    ctx.fillText(label, (1 - point.x) * width + 7, point.y * height - 7);
   }
 }
 
@@ -206,6 +174,7 @@ export default function usePoseTracking(videoRef, canvasRef) {
     let frame;
     let cancelled = false;
 
+    let drawingUtils = null;
     let lastVideoTime = -1;
     let prevPose = null;
     let prevTime = 0;
@@ -235,11 +204,12 @@ export default function usePoseTracking(videoRef, canvasRef) {
         canvas.width = width;
         canvas.height = height;
       }
+      drawingUtils ??= new DrawingUtils(canvas.getContext("2d"));
 
       const now = performance.now();
       const pose = landmarker.detectForVideo(video, now).landmarks[0];
 
-      drawPose(canvas.getContext("2d"), pose, width, height);
+      drawPose(canvas.getContext("2d"), drawingUtils, pose, width, height);
 
       const tracked = pose && visible(pose[11]) && visible(pose[12]);
       updateStatus(tracked ? "tracking" : "searching");

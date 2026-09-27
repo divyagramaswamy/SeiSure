@@ -1,11 +1,24 @@
-import { cleanPhone, isValidPhone, loadProfile } from "../profile";
+import { cleanPhone, isValidPhone } from "../profile";
 import { addEvent } from "../activity/activityLog";
 
-export default function CallCaregiver() {
-  const profile = loadProfile();
-  const hasCaregiver = isValidPhone(profile.caregiverPhone);
+export default function CallCaregiver({ patient: profile }) {
+  if (!profile) {
+    return (
+      <main className="pageNarrow">
+        <div className="card callCard">
+          <span className="eyebrow">CALL CAREGIVER</span>
+          <h2>No patient selected</h2>
+          <p>Choose or create a patient to see their caregiver.</p>
 
-  if (!hasCaregiver) {
+          <a href="#/profile" className="button">
+            Go to patient profile
+          </a>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isValidPhone(profile.caregiverPhone)) {
     return (
       <main className="pageNarrow">
         <div className="card callCard">
@@ -38,7 +51,9 @@ export default function CallCaregiver() {
         <a
           href={`tel:${phone}`}
           className="button callButton"
-          onClick={() => addEvent("call", `Called ${profile.caregiverName}`)}
+          onClick={() =>
+            addEvent(profile.id, "call", `Called ${profile.caregiverName}`)
+          }
         >
           Call now
         </a>

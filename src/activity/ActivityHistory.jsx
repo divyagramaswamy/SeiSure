@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   EVENT_TYPES,
   LEVELS,
   addDemoHistory,
   clearLog,
+  emptyLog,
+  fetchLog,
   groupByDay,
   hasDemoData,
-  loadLog,
   motionLevel,
   summarize,
 } from "./activityLog";
@@ -44,8 +45,31 @@ function dayLabel(start) {
   });
 }
 
-export default function ActivityHistory() {
-  const [log, setLog] = useState(loadLog);
+export default function ActivityHistory({ patientId }) {
+  const [loaded, setLoaded] = useState(null);
+  const [error, setError] = useState(null);
+  const log = loaded ?? emptyLog;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchLog(patientId)
+      .then((result) => !cancelled && setLoaded(result))
+      .catch((err) => !cancelled && setError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId]);
+
+  // Runs a change, then reloads the history from the server
+  async function change(action) {
+    try {
+      await action();
+      setLoaded(await fetchLog(patientId));
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   const summary = summarize(log);
   const days = groupByDay(log);
@@ -54,14 +78,12 @@ export default function ActivityHistory() {
   const postureTotal = summary.postures.upright + summary.postures.lying;
 
   function loadSample() {
-    addDemoHistory();
-    setLog(loadLog());
+    change(() => addDemoHistory(patientId));
   }
 
   function clearHistory() {
     if (window.confirm("Delete all recorded activity for this patient?")) {
-      clearLog();
-      setLog(loadLog());
+      change(() => clearLog(patientId));
     }
   }
 
@@ -74,7 +96,7 @@ export default function ActivityHistory() {
         </div>
 
         <div className="activityActions">
-          {!log.samples.some((s) => s.demo) && (
+          {loaded && !log.samples.some((s) => s.demo) && (
             <button type="button" onClick={loadSample}>
               Load sample data
             </button>
@@ -93,7 +115,11 @@ export default function ActivityHistory() {
         </p>
       )}
 
-      {isEmpty ? (
+      {error && <p className="formError">Could not load history: {error}</p>}
+
+      {!loaded ? (
+        !error && <p className="emptyState">Loading…</p>
+      ) : isEmpty ? (
         <p className="emptyState">
           No activity recorded yet. Activity is recorded while the Monitor page
           is open and the patient is in view of the camera.

@@ -1,10 +1,34 @@
 import { useState } from "react";
-import { isValidPhone, loadProfile, saveProfile } from "../profile";
+import { emptyProfile, isValidPhone, updatePatient } from "../profile";
 import ActivityHistory from "../activity/ActivityHistory";
 
-export default function PatientProfile() {
-  const [profile, setProfile] = useState(loadProfile);
+export default function PatientProfile({ patient, onSaved, onCreate }) {
+  if (!patient) {
+    return (
+      <main className="pageNarrow">
+        <div className="card callCard">
+          <span className="eyebrow">PATIENT PROFILE</span>
+          <h2>No patient selected</h2>
+          <p>
+            Choose a patient from the menu at the top, or create a new one.
+          </p>
+
+          <button type="button" className="button" onClick={onCreate}>
+            New patient
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // Keyed by id so the form resets when a different patient is selected
+  return <ProfileForm key={patient.id} patient={patient} onSaved={onSaved} />;
+}
+
+function ProfileForm({ patient, onSaved }) {
+  const [profile, setProfile] = useState({ ...emptyProfile, ...patient });
   const [status, setStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   function update(field) {
     return (e) => {
@@ -13,7 +37,7 @@ export default function PatientProfile() {
     };
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     if (!isValidPhone(profile.caregiverPhone)) {
@@ -21,13 +45,14 @@ export default function PatientProfile() {
       return;
     }
 
-    if (saveProfile(profile)) {
+    setSaving(true);
+    try {
+      onSaved(await updatePatient(patient.id, profile));
       setStatus({ error: false, text: "Profile saved." });
-    } else {
-      setStatus({
-        error: true,
-        text: "Could not save. Browser storage may be disabled.",
-      });
+    } catch (err) {
+      setStatus({ error: true, text: `Could not save: ${err.message}` });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -49,6 +74,7 @@ export default function PatientProfile() {
               value={profile.patientName}
               onChange={update("patientName")}
               placeholder="Jordan Lee"
+              required
             />
           </label>
 
@@ -100,8 +126,8 @@ export default function PatientProfile() {
         </fieldset>
 
         <div className="formActions">
-          <button type="submit" className="button">
-            Save profile
+          <button type="submit" className="button" disabled={saving}>
+            {saving ? "Saving…" : "Save profile"}
           </button>
 
           {status && (
@@ -112,7 +138,7 @@ export default function PatientProfile() {
         </div>
       </form>
 
-      <ActivityHistory />
+      <ActivityHistory patientId={patient.id} />
     </main>
   );
 }

@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Network requests only to this app and the MediaPipe wasm CDN. Also
+         blocks MediaPipe's built-in usage logging to odml.pa.googleapis.com -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="connect-src 'self' https://cdn.jsdelivr.net"
+    />
     <title>seizuresure</title>
   </head>
   <body>

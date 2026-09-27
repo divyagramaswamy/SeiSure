@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import usePoseTracking, { JOINT_LABELS } from "../pose/usePoseTracking";
+import usePoseTracking from "../pose/usePoseTracking";
 import useActivityRecorder from "../activity/useActivityRecorder";
 import { addEvent } from "../activity/activityLog";
 
@@ -8,7 +8,6 @@ const scenarios = {
     label: "NORMAL",
     hr: 76,
     hrv: 48,
-    vision: 12,
     wearable: 9,
     risk: 10,
   },
@@ -16,7 +15,6 @@ const scenarios = {
     label: "VERIFYING",
     hr: 82,
     hrv: 44,
-    vision: 86,
     wearable: 14,
     risk: 34,
   },
@@ -24,13 +22,12 @@ const scenarios = {
     label: "POSSIBLE SEIZURE",
     hr: 142,
     hrv: 19,
-    vision: 94,
     wearable: 91,
     risk: 95,
   },
 };
 
-export default function Dashboard() {
+export default function Dashboard({ patient }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -39,27 +36,27 @@ export default function Dashboard() {
   const [cameraError, setCameraError] = useState(false);
 
   const pose = usePoseTracking(videoRef, canvasRef);
-  useActivityRecorder(pose);
+  useActivityRecorder(patient?.id, pose);
 
   // Demo scenarios are logged with demo: true so they can be told apart
   // from real tracking in the activity history
+  function logDemoEvent(type, text) {
+    if (patient) addEvent(patient.id, type, text, { demo: true });
+  }
+
   function selectScenario(next) {
     if (next === scenario) return;
     setScenario(next);
 
     if (next === "seizure") {
-      addEvent("seizure", "Possible seizure detected (vision + watch)", {
-        demo: true,
-      });
+      logDemoEvent("seizure", "Possible seizure detected (vision + watch)");
     } else if (next === "falsePositive") {
-      addEvent("verifying", "Visual anomaly rejected by sensor fusion", {
-        demo: true,
-      });
+      logDemoEvent("verifying", "Visual anomaly rejected by sensor fusion");
     }
   }
 
   function markFalseAlarm() {
-    addEvent("falseAlarm", "Alert marked as false alarm", { demo: true });
+    logDemoEvent("falseAlarm", "Alert marked as false alarm");
     setScenario("normal");
   }
 
@@ -125,6 +122,12 @@ export default function Dashboard() {
         >
           Seizure Event
         </button>
+
+        {!patient && (
+          <span className="recordingNote">
+            No patient selected, activity is not being recorded
+          </span>
+        )}
       </div>
 
       {emergency && (
@@ -187,23 +190,9 @@ export default function Dashboard() {
             />
 
             {privacy && (
-              <>
-                <div className="privacyCaption">
-                  Pose-only view · raw imagery hidden
-                </div>
-
-                <dl className="jointLegend">
-                  {JOINT_LABELS.map(([left, right, name]) => (
-                    <div key={name}>
-                      <dt>
-                        {left}/{right}
-                      </dt>
-                      <dd>{name}</dd>
-                    </div>
-                  ))}
-                  <p>Even = right side, odd = left</p>
-                </dl>
-              </>
+              <div className="privacyCaption">
+                Pose-only view · raw imagery hidden
+              </div>
             )}
 
             {(cameraError || pose.status !== "tracking") && (
@@ -264,8 +253,8 @@ export default function Dashboard() {
 
             <Metric
               label="Vision Motion"
-              value={`${data.vision}%`}
-              percent={data.vision}
+              value={`${pose.motion}%`}
+              percent={pose.motion}
             />
 
             <Metric
@@ -298,7 +287,7 @@ export default function Dashboard() {
           </div>
 
           <div className="signalBoxes">
-            <Signal label="Vision" score={data.vision} />
+            <Signal label="Vision" score={pose.motion} />
             <Signal label="Heart Rate" score={emergency ? 88 : 11} />
             <Signal label="HRV" score={emergency ? 82 : 13} />
             <Signal label="Watch Motion" score={data.wearable} />

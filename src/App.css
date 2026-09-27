@@ -237,6 +237,10 @@ video,
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* The canvas mirrors itself while drawing so its labels read normally */
+video {
   transform: scaleX(-1);
 }
 
@@ -632,42 +636,6 @@ video,
   display: none;
 }
 
-.jointLegend {
-  position: absolute;
-  top: 13px;
-  right: 13px;
-  margin: 0;
-  padding: 9px 11px;
-  background: rgba(2, 10, 13, 0.88);
-  border: 1px solid #1c3a43;
-  border-radius: 8px;
-  font-size: 11px;
-}
-
-.jointLegend div {
-  display: flex;
-  gap: 8px;
-  line-height: 1.7;
-}
-
-.jointLegend dt {
-  width: 38px;
-  color: #cfeee5;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.jointLegend dd {
-  margin: 0;
-  color: #78909b;
-}
-
-.jointLegend p {
-  margin: 5px 0 0;
-  color: #5c7b86;
-  font-size: 10px;
-}
-
 .activityCard {
   margin-top: 18px;
 }
@@ -821,6 +789,52 @@ video,
   margin-top: 4px;
   color: #5b7781;
   font-size: 10px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.patientPicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #78909b;
+  font-size: 12px;
+}
+
+.patientPicker select {
+  max-width: 200px;
+  padding: 8px 10px;
+  border: 1px solid #1b3741;
+  border-radius: 9px;
+  background: #061116;
+  color: #edf8fa;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.apiError {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid #8e3542;
+  border-radius: 12px;
+  background: #211218;
+  color: #dca7ae;
+  font-size: 13px;
+}
+
+.recordingNote {
+  margin-left: auto;
+  color: #ffb27d;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 @media (max-width: 900px) {
