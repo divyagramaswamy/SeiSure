@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import usePoseTracking, { JOINT_LABELS } from "../pose/usePoseTracking";
+import useActivityRecorder from "../activity/useActivityRecorder";
+import { addEvent } from "../activity/activityLog";
 
 const scenarios = {
   normal: {
@@ -29,9 +32,36 @@ const scenarios = {
 
 export default function Dashboard() {
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
 
   const [privacy, setPrivacy] = useState(false);
   const [scenario, setScenario] = useState("normal");
+  const [cameraError, setCameraError] = useState(false);
+
+  const pose = usePoseTracking(videoRef, canvasRef);
+  useActivityRecorder(pose);
+
+  // Demo scenarios are logged with demo: true so they can be told apart
+  // from real tracking in the activity history
+  function selectScenario(next) {
+    if (next === scenario) return;
+    setScenario(next);
+
+    if (next === "seizure") {
+      addEvent("seizure", "Possible seizure detected (vision + watch)", {
+        demo: true,
+      });
+    } else if (next === "falsePositive") {
+      addEvent("verifying", "Visual anomaly rejected by sensor fusion", {
+        demo: true,
+      });
+    }
+  }
+
+  function markFalseAlarm() {
+    addEvent("falseAlarm", "Alert marked as false alarm", { demo: true });
+    setScenario("normal");
+  }
 
   const data = scenarios[scenario];
   const emergency = scenario === "seizure";
@@ -57,6 +87,7 @@ export default function Dashboard() {
         }
       } catch (err) {
         console.error("Camera unavailable:", err);
+        if (!cancelled) setCameraError(true);
       }
     }
 
@@ -75,21 +106,21 @@ export default function Dashboard() {
         <span>Demo:</span>
 
         <button
-          onClick={() => setScenario("normal")}
+          onClick={() => selectScenario("normal")}
           className={scenario === "normal" ? "selected" : ""}
         >
           Normal
         </button>
 
         <button
-          onClick={() => setScenario("falsePositive")}
+          onClick={() => selectScenario("falsePositive")}
           className={scenario === "falsePositive" ? "selected" : ""}
         >
           False Positive
         </button>
 
         <button
-          onClick={() => setScenario("seizure")}
+          onClick={() => selectScenario("seizure")}
           className={scenario === "seizure" ? "selected dangerButton" : ""}
         >
           Seizure Event
@@ -109,7 +140,9 @@ export default function Dashboard() {
             <a href="#/call" className="button">
               Call Caregiver
             </a>
-            <button className="secondary">False Alarm</button>
+            <button className="secondary" onClick={markFalseAlarm}>
+              False Alarm
+            </button>
           </div>
         </div>
       )}
@@ -148,25 +181,46 @@ export default function Dashboard() {
               className={privacy ? "hiddenVideo" : ""}
             />
 
+            <canvas
+              ref={canvasRef}
+              className={`poseCanvas ${privacy ? "" : "hiddenCanvas"}`}
+            />
+
             {privacy && (
-              <div className="privacyView">
-                <div className="person">
-                  <div className="head" />
-                  <div className="torso" />
-                  <div className="arm armLeft" />
-                  <div className="arm armRight" />
-                  <div className="leg legLeft" />
-                  <div className="leg legRight" />
+              <>
+                <div className="privacyCaption">
+                  Pose-only view · raw imagery hidden
                 </div>
 
-                <p>Pose-only processing</p>
-                <span>Raw imagery hidden</span>
+                <dl className="jointLegend">
+                  {JOINT_LABELS.map(([left, right, name]) => (
+                    <div key={name}>
+                      <dt>
+                        {left}/{right}
+                      </dt>
+                      <dd>{name}</dd>
+                    </div>
+                  ))}
+                  <p>Even = right side, odd = left</p>
+                </dl>
+              </>
+            )}
+
+            {(cameraError || pose.status !== "tracking") && (
+              <div className="poseMessage">
+                {poseMessage(cameraError, pose.status)}
               </div>
             )}
 
-            <div className="visionBadge">
+            <div
+              className={`visionBadge ${
+                !cameraError && pose.status === "tracking" ? "" : "idle"
+              }`}
+            >
               <span />
-              Tracking active
+              {!cameraError && pose.status === "tracking"
+                ? `Tracking · motion ${pose.motion}%`
+                : "Not tracking"}
             </div>
           </div>
         </div>
@@ -288,6 +342,13 @@ export default function Dashboard() {
       </section>
     </main>
   );
+}
+
+function poseMessage(cameraError, status) {
+  if (cameraError) return "Camera unavailable. Check browser permissions.";
+  if (status === "loading") return "Loading pose model…";
+  if (status === "error") return "Pose model failed to load.";
+  return "No person in view";
 }
 
 function Metric({ label, value, percent }) {

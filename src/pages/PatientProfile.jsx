@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { isValidPhone, loadProfile, saveProfile } from "../profile";
+import ActivityHistory from "../activity/ActivityHistory";
 
 export default function PatientProfile() {
   const [profile, setProfile] = useState(loadProfile);
@@ -110,6 +111,8 @@ export default function PatientProfile() {
           )}
         </div>
       </form>
+
+      <ActivityHistory />
     </main>
   );
 }

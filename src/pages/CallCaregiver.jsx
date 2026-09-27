@@ -1,4 +1,5 @@
 import { cleanPhone, isValidPhone, loadProfile } from "../profile";
+import { addEvent } from "../activity/activityLog";
 
 export default function CallCaregiver() {
   const profile = loadProfile();
@@ -34,7 +35,11 @@ export default function CallCaregiver() {
         {profile.relationship && <p>{profile.relationship}</p>}
         <div className="callNumber">{profile.caregiverPhone}</div>
 
-        <a href={`tel:${phone}`} className="button callButton">
+        <a
+          href={`tel:${phone}`}
+          className="button callButton"
+          onClick={() => addEvent("call", `Called ${profile.caregiverName}`)}
+        >
           Call now
         </a>
 

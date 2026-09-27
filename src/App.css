@@ -230,15 +230,42 @@ button {
   position: relative;
 }
 
-video {
+video,
+.poseCanvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
 }
 
+/* Hidden but still playing, so pose estimation keeps receiving frames */
 .hiddenVideo {
-  display: none;
+  visibility: hidden;
+}
+
+.poseCanvas {
+  pointer-events: none;
+}
+
+.privacyCaption {
+  position: absolute;
+  top: 13px;
+  left: 13px;
+  font-size: 11px;
+  color: #5c7b86;
+}
+
+.poseMessage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #78909b;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
 }
 
 .visionBadge {
@@ -256,84 +283,13 @@ video {
   gap: 7px;
 }
 
-.privacyView {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  align-content: center;
+.visionBadge.idle {
+  color: #78909b;
 }
 
-.privacyView p {
-  margin: 15px 0 3px;
-  font-weight: 600;
-}
-
-.privacyView span {
-  color: #5c7b86;
-  font-size: 11px;
-}
-
-.person {
-  width: 150px;
-  height: 260px;
-  position: relative;
-}
-
-.head {
-  position: absolute;
-  left: 56px;
-  top: 0;
-  width: 38px;
-  height: 38px;
-  border: 4px solid #31d6a6;
-  border-radius: 50%;
-}
-
-.torso,
-.arm,
-.leg {
-  position: absolute;
-  width: 4px;
-  background: #31d6a6;
-  box-shadow: 0 0 10px rgba(49, 214, 166, 0.5);
-  border-radius: 5px;
-}
-
-.torso {
-  height: 100px;
-  top: 42px;
-  left: 73px;
-}
-
-.arm {
-  height: 88px;
-  top: 53px;
-}
-
-.armLeft {
-  left: 48px;
-  transform: rotate(36deg);
-}
-
-.armRight {
-  right: 48px;
-  transform: rotate(-36deg);
-}
-
-.leg {
-  height: 110px;
-  top: 136px;
-}
-
-.legLeft {
-  left: 56px;
-  transform: rotate(19deg);
-}
-
-.legRight {
-  right: 56px;
-  transform: rotate(-19deg);
+.visionBadge.idle span {
+  background: #405761;
+  box-shadow: none;
 }
 
 .statusCard {
@@ -672,6 +628,201 @@ video {
   color: #78909b;
 }
 
+.hiddenCanvas {
+  display: none;
+}
+
+.jointLegend {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  margin: 0;
+  padding: 9px 11px;
+  background: rgba(2, 10, 13, 0.88);
+  border: 1px solid #1c3a43;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.jointLegend div {
+  display: flex;
+  gap: 8px;
+  line-height: 1.7;
+}
+
+.jointLegend dt {
+  width: 38px;
+  color: #cfeee5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.jointLegend dd {
+  margin: 0;
+  color: #78909b;
+}
+
+.jointLegend p {
+  margin: 5px 0 0;
+  color: #5c7b86;
+  font-size: 10px;
+}
+
+.activityCard {
+  margin-top: 18px;
+}
+
+.activityActions {
+  display: flex;
+  gap: 6px;
+}
+
+.activityActions button {
+  border: 1px solid #1b3741;
+  background: #0b1920;
+  color: #8fa6b0;
+  padding: 7px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.activityActions button:hover {
+  color: white;
+}
+
+.demoNote {
+  margin: -6px 0 14px;
+  color: #ffb27d;
+  font-size: 12px;
+}
+
+.emptyState,
+.noEvents {
+  color: #78909b;
+  font-size: 13px;
+}
+
+.noEvents {
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+
+.activityTiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px;
+}
+
+.activityHeading {
+  margin: 26px 0 0;
+  font-size: 14px;
+}
+
+.hourCell.level-still,
+.smallTrack.level-still div {
+  background: #2b5563;
+}
+
+.hourCell.level-light,
+.smallTrack.level-light div {
+  background: #31d6a6;
+}
+
+.hourCell.level-active,
+.smallTrack.level-active div {
+  background: #3ca7ff;
+}
+
+.hourCell.level-intense,
+.smallTrack.level-intense div {
+  background: #ff9b63;
+}
+
+.postureNote {
+  margin: 14px 0 0;
+  color: #78909b;
+  font-size: 12px;
+}
+
+.dayHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.levelLegend {
+  display: flex;
+  gap: 12px;
+  color: #78909b;
+  font-size: 11px;
+}
+
+.levelLegend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.levelLegend .hourCell {
+  width: 10px;
+  height: 10px;
+}
+
+.day {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #17323b;
+}
+
+.dayTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.dayTitle span {
+  color: #78909b;
+  font-size: 12px;
+}
+
+.dayTitle em {
+  color: #ff6577;
+  font-style: normal;
+}
+
+.hourStrip {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 2px;
+}
+
+.hourCell {
+  display: inline-block;
+  height: 22px;
+  border-radius: 3px;
+}
+
+.hourCell.noData {
+  background: #0a171d;
+}
+
+.hourCell.alarmHour {
+  box-shadow: inset 0 0 0 2px #ff6577;
+}
+
+.hourAxis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 4px;
+  color: #5b7781;
+  font-size: 10px;
+}
+
 @media (max-width: 900px) {
   .grid,
   .bottomGrid {
@@ -691,6 +842,11 @@ video {
   .navbar {
     flex-wrap: wrap;
     gap: 14px;
+  }
+
+  .formRow,
+  .activityTiles {
+    grid-template-columns: 1fr 1fr;
   }
 
   .formRow {
